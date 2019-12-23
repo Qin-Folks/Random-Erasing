@@ -2,6 +2,7 @@ from __future__ import absolute_import
 
 from scipy.stats import pearsonr
 import numpy as np
+import torch.nn.functional as F
 
 '''Resnet for cifar dataset. 
 Ported form 
@@ -27,7 +28,7 @@ def conv3x3(in_planes, out_planes, stride=1):
 class BasicBlock(nn.Module):
     expansion = 1
 
-    def __init__(self, inplanes, planes, stride=1, downsample=None):
+    def __init__(self, inplanes, planes, stride=1, downsample=None, dropRate=0.0):
         super(BasicBlock, self).__init__()
         self.conv1 = conv3x3(inplanes, planes, stride)
         self.bn1 = nn.BatchNorm2d(planes)
@@ -37,12 +38,17 @@ class BasicBlock(nn.Module):
         self.downsample = downsample
         self.stride = stride
 
+        self.droprate = dropRate
+
     def forward(self, x):
         residual = x
 
         out = self.conv1(x)
         out = self.bn1(out)
         out = self.relu(out)
+
+        if self.droprate > 0:
+            out = F.dropout(out, p=self.droprate, training=self.training)
 
         out = self.conv2(out)
         out = self.bn2(out)
@@ -59,7 +65,7 @@ class BasicBlock(nn.Module):
 class Bottleneck(nn.Module):
     expansion = 4
 
-    def __init__(self, inplanes, planes, stride=1, downsample=None):
+    def __init__(self, inplanes, planes, stride=1, downsample=None, dropRate=0.0):
         super(Bottleneck, self).__init__()
         self.conv1 = nn.Conv2d(inplanes, planes, kernel_size=1, bias=False)
         self.bn1 = nn.BatchNorm2d(planes)
@@ -72,12 +78,18 @@ class Bottleneck(nn.Module):
         self.downsample = downsample
         self.stride = stride
 
+        self.droprate = dropRate
+
     def forward(self, x):
         residual = x
 
         out = self.conv1(x)
         out = self.bn1(out)
         out = self.relu(out)
+
+        if self.droprate > 0:
+            print('dropped 1')
+            out = F.dropout(out, p=self.droprate, training=self.training)
 
         out = self.conv2(out)
         out = self.bn2(out)
@@ -97,7 +109,7 @@ class Bottleneck(nn.Module):
 
 class ResNet(nn.Module):
 
-    def __init__(self, depth, num_classes=1000):
+    def __init__(self, depth, num_classes=1000, dropRate=0.0):
         super(ResNet, self).__init__()
         # Model type specifies number of layers for CIFAR-10 model
         assert (depth - 2) % 6 == 0, 'depth should be 6n+2'
@@ -110,13 +122,13 @@ class ResNet(nn.Module):
                                bias=False)
         self.bn1 = nn.BatchNorm2d(16)
         self.relu = nn.ReLU(inplace=True)
-        self.layer1 = self._make_layer(block, 16, n)
-        self.layer2 = self._make_layer(block, 32, n, stride=2)
-        self.layer3 = self._make_layer(block, 64, n, stride=2)
+        self.layer1 = self._make_layer(block, 16, n, dropRate=dropRate)
+        self.layer2 = self._make_layer(block, 32, n, stride=2, dropRate=dropRate)
+        self.layer3 = self._make_layer(block, 64, n, stride=2, dropRate=dropRate)
         self.avgpool = nn.AvgPool2d(8)
         self.fc = nn.Linear(64 * block.expansion, num_classes)
 
-        self.dropout = nn.Dropout2d(0.2)
+        self.cors = []
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -126,7 +138,7 @@ class ResNet(nn.Module):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
 
-    def _make_layer(self, block, planes, blocks, stride=1):
+    def _make_layer(self, block, planes, blocks, stride=1, dropRate=0.0):
         downsample = None
         if stride != 1 or self.inplanes != planes * block.expansion:
             downsample = nn.Sequential(
@@ -136,18 +148,15 @@ class ResNet(nn.Module):
             )
 
         layers = []
-        layers.append(block(self.inplanes, planes, stride, downsample))
+        layers.append(block(self.inplanes, planes, stride, downsample, dropRate))
         self.inplanes = planes * block.expansion
         for i in range(1, blocks):
             layers.append(block(self.inplanes, planes))
 
         return nn.Sequential(*layers)
 
-    def forward(self, x, to_cal_cor=False, to_drop=False):
+    def forward(self, x, to_cal_cor=False):
         x = self.conv1(x)
-
-        if to_drop:
-            x = self.dropout(x)
 
         if to_cal_cor:
             correlations_tuples = []
@@ -161,7 +170,7 @@ class ResNet(nn.Module):
             correlations = list([x[0] for x in correlations_tuples])
             no_nan_correlations = list([abs(value) for value in correlations if not math.isnan(value)])
             # print('no nan correlations: ', no_nan_correlations[:20])
-            print('correlation: ', np.mean(no_nan_correlations))
+            self.cors.append(np.mean(no_nan_correlations))
 
         x = self.bn1(x)
         x = self.relu(x)    # 32x32

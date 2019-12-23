@@ -2,9 +2,14 @@
 Training script for Fashion-MNIST
 '''
 from __future__ import print_function
+import os
+
+from utils.misc import get_current_time
+
+os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"   # see issue #152
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 import argparse
-import os
 import shutil
 import time
 import random
@@ -80,6 +85,10 @@ parser.add_argument('--r1', default=0.3, type=float, help='aspect of erasing are
 
 
 args = parser.parse_args()
+
+if not args.evaluate and not args.resume:
+    args.checkpoint = os.path.join(args.checkpoint, get_current_time())
+
 state = {k: v for k, v in args._get_kwargs()}
 
 # Validate dataset
@@ -221,7 +230,7 @@ def train(trainloader, model, criterion, optimizer, epoch, use_cuda):
         data_time.update(time.time() - end)
 
         if use_cuda:
-            inputs, targets = inputs.cuda(), targets.cuda(async=True)
+            inputs, targets = inputs.cuda(), targets.cuda()
         inputs, targets = torch.autograd.Variable(inputs), torch.autograd.Variable(targets)
 
         # compute output

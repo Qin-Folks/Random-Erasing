@@ -78,7 +78,9 @@ parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
 parser.add_argument('--p', default=0, type=float, help='Random Erasing probability')
 parser.add_argument('--sh', default=0.4, type=float, help='max erasing area')
 parser.add_argument('--r1', default=0.3, type=float, help='aspect of erasing area')
-parser.add_argument('--dr', action='store_true', help='to apply dropout')
+
+# ZQ
+parser.add_argument('--correlation', action='store_true')
 
 args = parser.parse_args()
 
@@ -152,6 +154,7 @@ def main():
         model = models.__dict__[args.arch](
                     num_classes=num_classes,
                     depth=args.depth,
+                    dropRate=args.drop,
                 )
 
     model = torch.nn.DataParallel(model).cuda()
@@ -236,7 +239,7 @@ def train(trainloader, model, criterion, optimizer, epoch, use_cuda):
         inputs, targets = torch.autograd.Variable(inputs), torch.autograd.Variable(targets)
 
         # compute output
-        outputs = model(inputs, to_drop=args.dr)
+        outputs = model(inputs)
         loss = criterion(outputs, targets)
 
         # measure accuracy and record loss
@@ -293,7 +296,7 @@ def test(testloader, model, criterion, epoch, use_cuda):
         inputs, targets = torch.autograd.Variable(inputs, volatile=True), torch.autograd.Variable(targets)
 
         # compute output
-        outputs = model(inputs)
+        outputs = model(inputs, args.correlation)
         loss = criterion(outputs, targets)
 
         # measure accuracy and record loss
@@ -320,6 +323,8 @@ def test(testloader, model, criterion, epoch, use_cuda):
                     )
         bar.next()
     bar.finish()
+    if args.correlation:
+        print(model.module.cors[:50])
     return (losses.avg, top1.avg)
 
 def save_checkpoint(state, is_best, checkpoint='checkpoint', filename='checkpoint.pth.tar'):
