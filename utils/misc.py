@@ -12,6 +12,7 @@ import math
 import torch.nn as nn
 import torch.nn.init as init
 from torch.autograd import Variable
+import datetime
 
 __all__ = ['get_mean_and_std', 'init_params', 'mkdir_p', 'AverageMeter']
 
@@ -45,6 +46,12 @@ def init_params(net):
             init.normal(m.weight, std=1e-3)
             if m.bias:
                 init.constant(m.bias, 0)
+
+
+def get_current_time():
+    currentDT = datetime.datetime.now()
+    return str(currentDT.strftime("%Y-%m-%dT%H-%M-%S"))
+
 
 def mkdir_p(path):
     '''make dir if not exist'''

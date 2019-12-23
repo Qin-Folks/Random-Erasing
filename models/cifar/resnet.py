@@ -1,5 +1,8 @@
 from __future__ import absolute_import
 
+from scipy.stats import pearsonr
+import numpy as np
+
 '''Resnet for cifar dataset. 
 Ported form 
 https://github.com/facebook/fb.resnet.torch
@@ -7,6 +10,8 @@ and
 https://github.com/pytorch/vision/blob/master/torchvision/models/resnet.py
 (c) YANG, Wei 
 '''
+
+
 import torch.nn as nn
 import math
 
@@ -111,6 +116,8 @@ class ResNet(nn.Module):
         self.avgpool = nn.AvgPool2d(8)
         self.fc = nn.Linear(64 * block.expansion, num_classes)
 
+        self.dropout = nn.Dropout2d(0.2)
+
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
@@ -136,8 +143,26 @@ class ResNet(nn.Module):
 
         return nn.Sequential(*layers)
 
-    def forward(self, x):
+    def forward(self, x, to_cal_cor=False, to_drop=False):
         x = self.conv1(x)
+
+        if to_drop:
+            x = self.dropout(x)
+
+        if to_cal_cor:
+            correlations_tuples = []
+            a_bch, a_ker_num, a_y, a_x = x.shape
+            avg_pool_x = nn.AvgPool2d(a_y)(x).squeeze()
+            for a_ker_1 in range(a_ker_num-1):
+                for a_ker_2 in range(a_ker_1, a_ker_num):
+                    correlations_tuples.append(pearsonr(avg_pool_x[:, a_ker_1].detach().cpu().numpy(),
+                                                        avg_pool_x[:, a_ker_2].detach().cpu().numpy()))
+
+            correlations = list([x[0] for x in correlations_tuples])
+            no_nan_correlations = list([abs(value) for value in correlations if not math.isnan(value)])
+            # print('no nan correlations: ', no_nan_correlations[:20])
+            print('correlation: ', np.mean(no_nan_correlations))
+
         x = self.bn1(x)
         x = self.relu(x)    # 32x32
 

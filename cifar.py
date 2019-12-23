@@ -1,7 +1,13 @@
 from __future__ import print_function
 
-import argparse
 import os
+
+from utils.misc import get_current_time
+
+os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"   # see issue #152
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+
+import argparse
 import shutil
 import time
 import random
@@ -72,8 +78,13 @@ parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
 parser.add_argument('--p', default=0, type=float, help='Random Erasing probability')
 parser.add_argument('--sh', default=0.4, type=float, help='max erasing area')
 parser.add_argument('--r1', default=0.3, type=float, help='aspect of erasing area')
+parser.add_argument('--dr', action='store_true', help='to apply dropout')
 
 args = parser.parse_args()
+
+if not args.evaluate and not args.resume:
+    args.checkpoint = os.path.join(args.checkpoint, get_current_time())
+
 state = {k: v for k, v in args._get_kwargs()}
 
 # Validate dataset
@@ -121,7 +132,6 @@ def main():
     else:
         dataloader = datasets.CIFAR100
         num_classes = 100
-
 
     trainset = dataloader(root='./data', train=True, download=True, transform=transform_train)
     trainloader = data.DataLoader(trainset, batch_size=args.train_batch, shuffle=True, num_workers=args.workers)
@@ -222,11 +232,11 @@ def train(trainloader, model, criterion, optimizer, epoch, use_cuda):
         data_time.update(time.time() - end)
 
         if use_cuda:
-            inputs, targets = inputs.cuda(), targets.cuda(async=True)
+            inputs, targets = inputs.cuda(), targets.cuda()
         inputs, targets = torch.autograd.Variable(inputs), torch.autograd.Variable(targets)
 
         # compute output
-        outputs = model(inputs)
+        outputs = model(inputs, to_drop=args.dr)
         loss = criterion(outputs, targets)
 
         # measure accuracy and record loss
